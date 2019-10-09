@@ -1,3 +1,8 @@
+#######################################################################
+# plot_sensor_data.py
+#
+#######################################################################
+
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
@@ -5,35 +10,43 @@ import serial
 
 fig, ax = plt.subplots()
 
-max_x = 5
-max_rand = 10
+# serial settings
+serial_port = "/dev/ttyUSB0"
+serial_bdrate = 9600
 
+# set view range of y axis (meters)
+ax.set_ylim(-2,3)
+
+# set view and calculation range of x axis
 length = 100
 
-ar = [0]*length
+# allocate buffer
+ar_sensor      = [0]*length
+ar_avg         = [0]*length
+ar_grad        = [0]*length
+
 
 x = np.arange(0, length)
-ax.set_ylim(-2,3)
-line1, = ax.plot(x, color='g', label="sensor data")
-line2, = ax.plot(x, color='r', label="average", linestyle='--')
-line3, = ax.plot(x, color='y', label="average points")
+line_sensor, = ax.plot(x, color='g', label="sensor data")
+line_avg, = ax.plot(x, color='r', label="moving average", linestyle='--')
+line_grad, = ax.plot(x, color='y', label="gradient")
 
-dd_ar = [0]*length
 
 plt.grid(b=True, which='both', color='0.65', linestyle='-')
 
+
 ser = serial.Serial(
-        port='/dev/ttyUSB0',\
-        baudrate=9600,\
+        port=serial_port,\
+        baudrate=serial_bdrate,\
         parity=serial.PARITY_NONE,\
         stopbits=serial.STOPBITS_ONE,\
         bytesize=serial.EIGHTBITS,\
             timeout=0)
 
 def init():  # give a clean slate to start
-    line1.set_ydata([np.nan] * len(x))
-    line2.set_ydata([np.nan] * len(x))
-    line3.set_ydata([np.nan] * len(x))
+    line_sensor.set_ydata([np.nan] * len(x))
+    line_avg.set_ydata([np.nan] * len(x))
+    line_grad.set_ydata([np.nan] * len(x))
     
     plt.xticks(rotation=45, ha='right')
     plt.subplots_adjust(bottom=0.30)
@@ -41,42 +54,38 @@ def init():  # give a clean slate to start
     plt.ylabel('Height (m)')
     plt.xlabel('Time (ms)')
     ax.legend()
-    return [line1,line2,line3]
+    return [line_sensor, line_avg, line_grad]
 
-def animate(i):  # update the y values (every 1000ms)
-    
-    
+def animate(i):
     l = ser.readline()
     str = l.decode("utf-8").rstrip()
     if len(str):
-        value = float(str)
+        sensor_float = float(str)
     else:
-        return [line1,line2]
+        return [line_sensor, line_avg, line_grad]
         
-    ar.append(value)
+    ar_sensor.append(sensor_float)
+        
+    # sensor data
+    np_sensor = np.array(ar_sensor[-length:])
     
-    # derivation
-#    dd_ar.append(value - dd_ar[-1])
-#    np_dd = np.array(dd_ar[-length:])
+    # moving average
+    avg_window = 50
+    mov_avg = np.sum(np_sensor[-avg_window:]) / avg_window
+    ar_avg.append(mov_avg)
+    np_avg = np.array(ar_avg[-length:])
     
-    # last data points
-    np_ar = np.array(ar[-length:])
     
-    # average
-    avg_range = 50
-    np_sum = np.sum(np_ar[-avg_range:])
-    np_avg = np.array([np_sum / avg_range] * len(x))
+    # gradient
+    ar_grad.append((mov_avg) - ar_avg[-2])
+    np_grad = np.array(ar_grad[-length:])
     
-    dd_ar.append(np_sum / avg_range)
-    np_dd = np.array(dd_ar[-length:])
+    # draw lines
+    line_sensor.set_ydata(np_sensor)
+    line_avg.set_ydata(np_avg)
+    line_grad.set_ydata(np_grad)
     
-
-    
-    line1.set_ydata(np_ar)
-    line2.set_ydata(np_avg)
-    line3.set_ydata(np_dd)
-    #line.set_ydata([1] * length)
-    return [line1,line2,line3]
+    return [line_sensor, line_avg, line_grad]
 
 ani = animation.FuncAnimation(
     fig, animate, init_func=init, interval=10, blit=True, save_count=10)
