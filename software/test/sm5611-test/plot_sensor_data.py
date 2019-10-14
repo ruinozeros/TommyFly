@@ -11,7 +11,7 @@ import serial
 fig, ax = plt.subplots()
 
 # serial settings
-serial_port = "/dev/ttyUSB0"
+serial_port = "/dev/ttyUSB1"
 serial_bdrate = 9600
 
 # set view range of y axis (meters)
@@ -56,12 +56,18 @@ def init():  # give a clean slate to start
     ax.legend()
     return [line_sensor, line_avg, line_grad]
 
+class mvg_avg_old:
+    def __init__(self, avg):
+        self.avg = avg
+        
+avg_old = mvg_avg_old(0)
+
 def animate(i):
     l = ser.readline()
-    str = l.decode("utf-8").rstrip()
-    if len(str):
-        sensor_float = float(str)
-    else:
+    try:
+        flt = l.decode("utf-8").rstrip()
+        sensor_float = float(flt)
+    except (UnicodeDecodeError, ValueError):
         return [line_sensor, line_avg, line_grad]
         
     ar_sensor.append(sensor_float)
@@ -70,22 +76,25 @@ def animate(i):
     np_sensor = np.array(ar_sensor[-length:])
     
     # moving average
-    avg_window = 50
+    avg_window = 100
     mov_avg = np.sum(np_sensor[-avg_window:]) / avg_window
     ar_avg.append(mov_avg)
     np_avg = np.array(ar_avg[-length:])
     
-    
-    # gradient
-    ar_grad.append((mov_avg) - ar_avg[-2])
-    np_grad = np.array(ar_grad[-length:])
+    ravg = old_avg + (n-1)/n + sensor_float / n
     
     # draw lines
     line_sensor.set_ydata(np_sensor)
     line_avg.set_ydata(np_avg)
-    line_grad.set_ydata(np_grad)
+    
+    # vertical speed
+    if not i % 100:
+        print(str(round(mov_avg - avg_old.avg, 2)) + "m/s")
+        avg_old.avg = mov_avg
     
     return [line_sensor, line_avg, line_grad]
+
+
 
 ani = animation.FuncAnimation(
     fig, animate, init_func=init, interval=10, blit=True, save_count=10)
